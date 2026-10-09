@@ -24,4 +24,4 @@ The sha256 it pins is that of the exact bytes it verified. Anything else is refu
 
 1. Add `Casks/<name>.rb` with a `livecheck` block (for GitHub releases, `url :url` with `strategy :github_latest`).
 2. Add `"<name>": { "team_id": "<Developer ID team>", "app": "<Name>.app" }` to `.github/autobump.json`.
-3. Optionally, have the project's release tooling run `gh workflow run autobump.yml -R EricAndrechek/homebrew-tap` once its release is published, so the cask follows within minutes rather than at the next six-hourly check.
+3. Optionally, have the project ask this tap to check as soon as its release is published, so the cask follows within minutes rather than at the next six-hourly check. Copy [Pacer's `homebrew-tap.yml`](https://github.com/EricAndrechek/Pacer/blob/main/.github/workflows/homebrew-tap.yml) into the project (changing `cask=` and the workflow it follows), and give it a `HOMEBREW_TAP_TRIGGER_TOKEN` secret: a fine-grained personal access token with access to this repo only and *Actions: Read and write* only. That token can start this workflow and nothing else; it cannot write here.
