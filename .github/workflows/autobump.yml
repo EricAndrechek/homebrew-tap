@@ -1,0 +1,114 @@
+# Keep every cask in this tap on its project's latest release, without
+# giving any project's CI a key to this repo.
+#
+# Pull, not push: this workflow asks each project for its newest version
+# (the cask's own `livecheck`), and only this repo's built-in token writes
+# here. A project joins by adding its cask and an entry in
+# .github/autobump.json — nothing to set up on the project's side.
+#
+# A version is pinned only after the download proves it is ours: signed with
+# the Developer ID team the config names, notarized by Apple with the ticket
+# stapled, and strictly newer than what the cask has (no downgrades). The
+# sha256 pinned is that of the exact bytes verified. A release published by
+# anyone without the signing identity — a compromised project account, a
+# swapped asset — is refused, and nothing is committed.
+#
+# Runs every six hours, and on demand: a project's release tooling can ask
+# right after it publishes (`gh workflow run autobump.yml -R
+# EricAndrechek/homebrew-tap`), so the cask follows within minutes.
+
+name: autobump
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      cask:
+        description: "Only this cask (default: every cask in .github/autobump.json)"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: autobump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      # livecheck's GitHub strategies, without the anonymous rate limit.
+      HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
+      TAP: ericandrechek/tap
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Use this checkout as the tap
+        run: |
+          set -euo pipefail
+          dir="$(brew --repository)/Library/Taps/ericandrechek/homebrew-tap"
+          mkdir -p "$(dirname "$dir")"
+          rm -rf "$dir"
+          ln -s "$GITHUB_WORKSPACE" "$dir"
+
+      - name: Check, verify and pin
+        env:
+          ONLY: ${{ github.event.inputs.cask }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          casks="$(jq -r '.casks | keys[]' .github/autobump.json)"
+          [ -n "${ONLY:-}" ] && casks="$ONLY"
+          bumped=0
+
+          for c in $casks; do
+            team="$(jq -r --arg c "$c" '.casks[$c].team_id // empty' .github/autobump.json)"
+            app="$(jq -r --arg c "$c" '.casks[$c].app // empty' .github/autobump.json)"
+            [ -n "$team" ] && [ -n "$app" ] || { echo "::error::$c has no team_id/app in autobump.json"; exit 1; }
+
+            current="$(brew info --cask --json=v2 "$TAP/$c" | jq -r '.casks[0].version')"
+            latest="$(brew livecheck --cask --json "$TAP/$c" | jq -r '.[0].version.latest // empty')"
+            echo "$c: cask $current, latest $latest"
+            [ -n "$latest" ] || { echo "::warning::$c: livecheck found no version"; continue; }
+            [ "$latest" != "$current" ] || continue
+
+            # Strictly newer only: a "latest" release that is older than the
+            # pinned version is a downgrade, never a bump.
+            if ! ruby -e 'exit(Gem::Version.new(ARGV[0]) > Gem::Version.new(ARGV[1]) ? 0 : 1)' "$latest" "$current"; then
+              echo "::error::$c: livecheck says $latest, which is not newer than $current — refusing"
+              exit 1
+            fi
+
+            # Brew's own edit: version, plus the sha256 of the new download.
+            brew bump-cask-pr --write-only --no-audit --no-style --version "$latest" "$TAP/$c"
+            # The download brew just checksummed, re-checked against the pin.
+            brew fetch --cask "$TAP/$c"
+            dmg="$(brew --cache --cask "$TAP/$c")"
+
+            if ! .github/scripts/verify-dmg.sh "$dmg" "$team" "$app"; then
+              git checkout -- "Casks/$c.rb"
+              exit 1
+            fi
+
+            brew audit --cask --online "$TAP/$c"
+            brew style "Casks/$c.rb"
+
+            git add "Casks/$c.rb"
+            git commit -m "$c $latest" -m "Verified: signed by team $team, notarized. sha256 $(shasum -a 256 "$dmg" | cut -d' ' -f1)."
+            echo "::notice title=$c::$current → $latest"
+            bumped=$((bumped + 1))
+          done
+
+          if [ "$bumped" -gt 0 ]; then
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          else
+            echo "Every cask is current."
+          fi
