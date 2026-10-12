@@ -16,6 +16,9 @@ cask "pacer" do
   depends_on macos: :sequoia
 
   app "Pacer.app"
+  # The `pacer` command line ships inside the app (from v0.7.4). Linked from
+  # the app, so Sparkle's in-place updates keep it current.
+  binary "#{appdir}/Pacer.app/Contents/Helpers/PacerCLI.app/Contents/MacOS/pacer"
 
   # Leaves the usage history in Pacer's App Group container: --zap removes the
   # app's settings and logs, not data that can't be rebuilt from scratch.
