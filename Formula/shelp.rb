@@ -1,8 +1,8 @@
 class Shelp < Formula
   desc "Turn a task into a shell command, or explain one, with the model you have"
   homepage "https://github.com/EricAndrechek/shelp"
-  url "https://github.com/EricAndrechek/shelp/archive/refs/tags/v0.4.0.tar.gz"
-  sha256 "752f7a3721ab34f0e2e7ddf72117da0cbe6ab20d4760bab14a98f4c9f5df6125"
+  url "https://github.com/EricAndrechek/shelp/archive/refs/tags/v0.4.1.tar.gz"
+  sha256 "116531d4489cd2517f0ad5533687fa7ad5e94216785481adfa0f0cb16d8a0bb0"
   license "MIT"
   head "https://github.com/EricAndrechek/shelp.git", branch: "main"
 
