@@ -1,5 +1,8 @@
 {
   "casks": {
     "pacer": { "team_id": "YZXWMJ5VBY", "app": "Pacer.app" }
+  },
+  "formulae": {
+    "shelp": { "repo": "EricAndrechek/shelp", "signing_key": "28D158119B3EA4EC9C35BF5B4979352C1EDB052D" }
   }
 }

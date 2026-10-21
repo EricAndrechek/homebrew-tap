@@ -1,9 +1,9 @@
-# Keep every cask in this tap on its project's latest release, without
-# giving any project's CI a key to this repo.
+# Keep every cask and formula in this tap on its project's latest release,
+# without giving any project's CI a key to this repo.
 #
 # Pull, not push: this workflow asks each project for its newest version
 # (the cask's own `livecheck`), and only this repo's built-in token writes
-# here. A project joins by adding its cask and an entry in
+# here. A project joins by adding its cask or formula and an entry in
 # .github/autobump.json — nothing to set up on the project's side.
 #
 # A version is pinned only after the download proves it is ours: signed with
@@ -13,9 +13,15 @@
 # anyone without the signing identity — a compromised project account, a
 # swapped asset — is refused, and nothing is committed.
 #
+# A formula is built from source, so its proof is a signature instead: the
+# release tag must be an annotated tag signed by the key the config names
+# (checked against that key's copy in .github/keys/), the source tarball must
+# be identical to the tag's tree, and the version must be strictly newer.
+#
 # Runs every six hours, and on demand: a project's release tooling can ask
 # right after it publishes (`gh workflow run autobump.yml -R
-# EricAndrechek/homebrew-tap`), so the cask follows within minutes.
+# EricAndrechek/homebrew-tap -f cask=<name>` or `-f formula=<name>`), so the
+# cask or formula follows within minutes.
 
 name: autobump
 
@@ -26,6 +32,9 @@ on:
     inputs:
       cask:
         description: "Only this cask (default: every cask in .github/autobump.json)"
+        required: false
+      formula:
+        description: "Only this formula (default: every formula in .github/autobump.json)"
         required: false
 
 permissions:
@@ -59,14 +68,20 @@ jobs:
 
       - name: Check, verify and pin
         env:
-          ONLY: ${{ github.event.inputs.cask }}
+          ONLY_CASK: ${{ github.event.inputs.cask }}
+          ONLY_FORMULA: ${{ github.event.inputs.formula }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          casks="$(jq -r '.casks | keys[]' .github/autobump.json)"
-          [ -n "${ONLY:-}" ] && casks="$ONLY"
+          # No input: everything. One input: only that cask or formula.
+          casks="$(jq -r '(.casks // {}) | keys[]' .github/autobump.json)"
+          formulae="$(jq -r '(.formulae // {}) | keys[]' .github/autobump.json)"
+          if [ -n "${ONLY_CASK:-}" ] || [ -n "${ONLY_FORMULA:-}" ]; then
+            casks="${ONLY_CASK:-}"
+            formulae="${ONLY_FORMULA:-}"
+          fi
           bumped=0
 
           for c in $casks; do
@@ -107,8 +122,47 @@ jobs:
             bumped=$((bumped + 1))
           done
 
+          for f in $formulae; do
+            repo="$(jq -r --arg f "$f" '.formulae[$f].repo // empty' .github/autobump.json)"
+            key="$(jq -r --arg f "$f" '.formulae[$f].signing_key // empty' .github/autobump.json)"
+            [ -n "$repo" ] && [ -n "$key" ] || { echo "::error::$f has no repo/signing_key in autobump.json"; exit 1; }
+            keyfile=".github/keys/$key.asc"
+            [ -f "$keyfile" ] || { echo "::error::$f: $keyfile is missing"; exit 1; }
+
+            current="$(brew info --formula --json=v2 "$TAP/$f" | jq -r '.formulae[0].versions.stable')"
+            latest="$(brew livecheck --formula --json "$TAP/$f" | jq -r '.[0].version.latest // empty')"
+            echo "$f: formula $current, latest $latest"
+            [ -n "$latest" ] || { echo "::warning::$f: livecheck found no version"; continue; }
+            [ "$latest" != "$current" ] || continue
+
+            # Strictly newer only, as for casks.
+            if ! ruby -e 'exit(Gem::Version.new(ARGV[0]) > Gem::Version.new(ARGV[1]) ? 0 : 1)' "$latest" "$current"; then
+              echo "::error::$f: livecheck says $latest, which is not newer than $current — refusing"
+              exit 1
+            fi
+
+            # Brew's own edit: url, plus the sha256 of the new tarball.
+            brew bump-formula-pr --write-only --no-audit --no-style --version "$latest" "$TAP/$f"
+            # The tarball brew just checksummed, re-checked against the tag.
+            brew fetch --formula "$TAP/$f"
+            tarball="$(brew --cache --formula "$TAP/$f")"
+
+            if ! .github/scripts/verify-tag.sh "$repo" "v$latest" "$key" "$keyfile" "$tarball"; then
+              git checkout -- "Formula/$f.rb"
+              exit 1
+            fi
+
+            brew audit --formula --online "$TAP/$f"
+            brew style "Formula/$f.rb"
+
+            git add "Formula/$f.rb"
+            git commit -m "$f $latest" -m "Verified: tag v$latest signed by $key; tarball matches the tag's tree. sha256 $(shasum -a 256 "$tarball" | cut -d' ' -f1)."
+            echo "::notice title=$f::$current → $latest"
+            bumped=$((bumped + 1))
+          done
+
           if [ "$bumped" -gt 0 ]; then
             git push origin "HEAD:${GITHUB_REF_NAME}"
           else
-            echo "Every cask is current."
+            echo "Every cask and formula is current."
           fi
