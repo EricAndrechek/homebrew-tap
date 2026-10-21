@@ -142,7 +142,7 @@ jobs:
             fi
 
             # Brew's own edit: url, plus the sha256 of the new tarball.
-            brew bump-formula-pr --write-only --no-audit --no-style --version "$latest" "$TAP/$f"
+            brew bump-formula-pr --write-only --no-audit --version "$latest" "$TAP/$f"
             # The tarball brew just checksummed, re-checked against the tag.
             brew fetch --formula "$TAP/$f"
             tarball="$(brew --cache --formula "$TAP/$f")"
