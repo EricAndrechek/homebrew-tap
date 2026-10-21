@@ -62,7 +62,10 @@ primary="$(echo "$status" | awk '$1=="[GNUPG:]" && $2=="VALIDSIG" {print $NF; ex
 # The pinned bytes must be that tag's tree. GitHub's archive has a single
 # top-level directory, <repo-name>-<version>; strip it and compare the trees.
 tar -xzf "$tarball" -C "$work/pinned"
+# dotglob: a hidden entry beside the directory counts too.
+shopt -s dotglob nullglob
 set -- "$work"/pinned/*
+shopt -u dotglob nullglob
 [ "$#" -eq 1 ] && [ -d "$1" ] || fail "tarball does not have exactly one top-level directory"
 git archive --format=tar "refs/tags/$tag" | tar -xf - -C "$work/tagged"
 if ! diff -r "$1" "$work/tagged" >"$work/diff.txt" 2>&1; then
