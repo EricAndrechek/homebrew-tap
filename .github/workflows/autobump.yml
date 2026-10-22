@@ -56,7 +56,9 @@ jobs:
       HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
       TAP: ericandrechek/tap
     steps:
-      - uses: actions/checkout@v5
+      # The checkout keeps the job token on purpose: the bump step pushes
+      # with it. Nothing here uploads artifacts, so it can't leak that way.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 zizmor: ignore[artipacked]
 
       - name: Use this checkout as the tap
         run: |

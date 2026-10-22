@@ -1,0 +1,12 @@
+# Keep the pinned action SHAs current; a new release waits a week first.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
