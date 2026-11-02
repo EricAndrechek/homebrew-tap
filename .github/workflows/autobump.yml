@@ -68,6 +68,16 @@ jobs:
           rm -rf "$dir"
           ln -s "$GITHUB_WORKSPACE" "$dir"
 
+      # Newer brew refuses to load casks/formulae from an untrusted tap
+      # ("Refusing to load cask ... from untrusted tap"). Runner images
+      # differ in brew version, so only trust where the command exists.
+      - name: Trust this tap
+        run: |
+          set -euo pipefail
+          if brew commands | grep -qx trust; then
+            brew trust ericandrechek/tap
+          fi
+
       - name: Check, verify and pin
         env:
           ONLY_CASK: ${{ github.event.inputs.cask }}
