@@ -72,10 +72,15 @@ jobs:
       # ("Refusing to load cask ... from untrusted tap"). Runner images
       # differ in brew version, so only trust where the command exists.
       - name: Trust this tap
+        # No pipe into `grep -q`: it exits on the first match, brew then hits a
+        # broken pipe, and under pipefail the check read as "no trust command"
+        # and the step was skipped (run 41524304359). Call it directly; older
+        # brew without the command just reports it unknown.
         run: |
-          set -euo pipefail
-          if brew commands | grep -qx trust; then
-            brew trust ericandrechek/tap
+          if brew trust ericandrechek/tap; then
+            echo "Trusted ericandrechek/tap"
+          else
+            echo "This brew has no trust command (or it failed); continuing"
           fi
 
       - name: Check, verify and pin
