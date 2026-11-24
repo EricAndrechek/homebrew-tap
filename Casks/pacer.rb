@@ -1,6 +1,6 @@
 cask "pacer" do
-  version "0.9.2"
-  sha256 "9b4000e00a6a2a9b3fc5508b22fa5098d6a15af492a9967df6cbf71721bcbb15"
+  version "0.9.3"
+  sha256 "e1574609403861ac7909f8f89d88dfbd406b52cc35d3fae66881c8c8b8c12cc0"
 
   url "https://github.com/EricAndrechek/Pacer/releases/download/v#{version}/Pacer-#{version}.dmg"
   name "Pacer"
